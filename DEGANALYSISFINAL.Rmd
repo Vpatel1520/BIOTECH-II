@@ -1,0 +1,465 @@
+---
+title: "DEG ANALYSIS"
+author: "VAIBHAVI"
+date: "2025-04-03"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r}
+install.packages("knitr")
+install.packages("rmarkdown")
+```
+
+#Prepare DEG analysis
+```{r}
+
+setwd("C:/Users/Student/Desktop/Count_Practice/Count_Practice")
+
+```
+
+
+#Load count data
+```{r}
+install.packages("gtools")
+library("gtools")
+filelist <- mixedsort(list.files(pattern = "*.txt"))
+data_list <- lapply(filelist, function(fn) read.delim(fn, header = FALSE, sep = "\t")[, 2])
+countdata <- do.call(cbind, data_list)
+rownames(countdata) <- read.delim(filelist[1], header = FALSE, sep = "\t")[, 1]
+```
+
+
+#Polish count data
+```{r}
+colnames(countdata) <-sub(".count.txt", "",filelist)
+mode(countdata) <-"numeric"
+countdata <- countdata[-c((nrow(countdata)-4):nrow(countdata)),]
+head(countdata)
+tail(countdata)
+View(countdata)
+```
+
+#Generate colData
+```{r}
+sample.names <- colnames(countdata)
+coldata <- data.frame(  
+name = sample.names,        
+condition = rep(c("control", "treated"), each = 2, times = 2),   
+sample = rep(c("A", "B"), each = 4) )
+
+
+coldata$condition <- factor(coldata$condition)
+coldata$sample <- factor(coldata$sample)
+
+coldata
+
+write.csv(coldata,file="coldata.csv",row.names = FALSE)
+
+```
+
+
+#Prepare DESeq2 data
+```{r}
+install.packages("DESeq2")
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(
+countData = countdata,
+colData = coldata,
+design = ~ condition + sample)
+```
+
+
+#Plot dispersion of genes
+```{r}
+dds <- DESeq(dds)
+plotDispEsts(dds,main="Dispersion plot")
+```
+
+#Activity
+```{r}
+dds <- DESeq(dds)
+plotDispEsts(dds,main="Dispersion plot",
+ xlab = "Normalized counts",
+ ylab = "Dispersion level",
+ genecol = "orange",
+ fitcol = "red",
+  finalcol = "blue",
+ cex = 0.30,)
+ 
+```
+
+
+
+
+#DEG analysis practice
+#Normalization using DESeq2
+```{r}
+dds.SF <-estimateSizeFactors(dds)
+print(sizeFactors(dds.SF))
+```
+
+
+```{r}
+Normalizedcount <- counts(dds.SF, normalized = T)
+head(Normalizedcount)
+```
+
+```{r}
+
+write.csv(Normalizedcount, file = "Normalized_counts.csv", row.names = TRUE)
+
+```
+
+```{r}
+dds.SF <-estimateSizeFactors(dds)
+print(sizeFactors(dds.SF))
+
+Normalizedcount <- counts(dds.SF, normalized = T)
+head(Normalizedcount)
+
+write.csv(Normalizedcount, file="Normalized_counts.csv", row.names = TRUE)
+```
+
+
+
+
+#Plot counts
+```{r}
+group.col <- c("brown","red")[coldata$condition]
+png(filename = "plot_counts.png", width = 12, height = 6, units = "in",  res = 300 )
+par(mfrow=c(1,2), mar = c(5, 10, 5, 5))
+
+boxplot(log2(counts(dds.SF, normalized=FALSE)+1),
+xlab="log2(counts+1)", main="Raw counts" , las = 1, 
+horizontal = TRUE, pch = ",", col = group.col)
+
+boxplot(log2(counts(dds.SF, normalized=TRUE)+1), 
+xlab="log2(normalized counts+1)", main="Normalized counts", las = 1, 
+horizontal = TRUE, pch = ",", col = group.col)
+
+dev.off()
+
+```
+
+
+
+#Sample distance examination
+```{r}
+BiocManager::install("gplots")
+library("gplots")
+library("ggplot2")
+
+transformed_data <- vst(dds, blind = TRUE)
+
+sampleDists <- dist(t(assay(transformed_data)))
+
+sampleDistMatrix <- as.matrix(sampleDists)
+```
+
+
+
+
+#Heatmap
+```{r}
+
+colours <- colorRampPalette(c("red", "white"))(100)
+
+
+heatmap(  
+sampleDistMatrix,  
+Rowv = NA,   
+Colv = NA,  
+col = colours,  
+margins = c(12, 12),  
+main = "Sample distance"  
+)
+
+```
+
+
+
+
+#Principal Component Analysis (PCA)
+```{r}
+pcaData <- plotPCA(transformed_data, intgroup = c("sample","condition"),returnData = TRUE)
+
+percentVar <-round(100 * attr(pcaData,"pecentVar"))
+
+PCA <- ggplot(pcaData, aes(PC1, PC2, color = condition,shape = sample))+
+   geom_point(size = 3, alpha = 0.8) +
+  xlab(paste0("PC1 (", percentVar[1], "%) ")) +
+  ylab(paste0("PC2 (", percentVar[2], "%) ")) +
+scale_color_manual(values = c("skyblue", "orange")) 
+
+PCA
+
+ggsave("../PCA_plot.png", plot = PCA, width = 5, height = 4, dpi = 300)
+```
+
+
+
+
+#Activity
+```{r}
+PCA <- ggplot(pcaData, aes(PC1, PC2, color = condition,shape = sample))+
+geom_point(size = 3, alpha = 0.8) +
+xlab(paste0("PC1 (",percentVar[1],"%) ")) +
+ylab(paste0("PC2 (",percentVar[2],"%) ")) +
+theme_bw() +
+ggtitle("PCAPLOT") +
+scale_color_manual(values = c("blue", "red")) +
+  
+theme(plot.title =element_text(size = 12, face ="bold", hjust = 0.5),
+legend.title=element_text(size=12),
+legend.text=element_text(size=12)) +
+  
+theme(panel.grid.major = element_blank()) +
+theme(panel.grid.minor = element_blank())
+  
+scale_color_manual(values = c("skyblue", "orange")) 
+
+PCA
+
+
+ggsave("../PCA_plot.png", plot = PCA, width = 5, height = 4, dpi = 300)
+```
+
+
+
+
+#Filtering
+```{r}
+
+ddsFiltered <- dds
+
+filterGenes <- rowSums(counts(ddsFiltered, normalized = TRUE) >= 10) >= 2
+
+ddsFiltered <- ddsFiltered[filterGenes, ]
+
+plotDispEsts(ddsFiltered, main= "Dispersion after filtering") 
+
+```
+
+
+
+
+#Run DESeq function
+```{r}
+
+design(ddsFiltered) <- ~ sample + condition + sample:condition
+
+ddsFiltered <- DESeq(ddsFiltered)
+
+resultsNames(ddsFiltered)
+
+resSampleA <- results(ddsFiltered, name = "condition_treated_vs_control")
+summary(resSampleA)
+
+resSampleB <- results(ddsFiltered, name = "sampleB.conditiontreated")
+summary(resSampleB)
+
+```
+
+
+
+#Extract significant DEGs
+```{r}
+sigDEGs_A <- subset(resSampleA, padj<0.05 & abs(log2FoldChange)> 1)
+sigDEGs_A
+write.csv(as.data.frame(sigDEGs_A),file = "SampleA_DEGs.csv")
+
+
+sigDEGs_B <- subset(resSampleB, padj < 0.05 & abs(log2FoldChange) > 1)
+sigDEGs_B
+write.csv(as.data.frame(sigDEGs_B), file = "SampleB_DEGs.csv")
+
+```
+
+
+
+
+#Visualization and GO analysis
+#volcano plot
+```{r}
+resSampleA <- resSampleA[!is.na(resSampleA$padj), ]
+
+
+resSampleA$Significance <- ifelse(resSampleA$padj < 0.05 & abs(resSampleA$log2FoldChange) > 1, "Significant", "Not Significant")
+
+
+library(ggplot2)
+volcanoA <- ggplot(resSampleA, aes(x = log2FoldChange, y = -log10(padj), color = Significance)) +  
+geom_point(alpha = 0.8, size = 1.5) +  
+scale_color_manual(values = c("Significant" = "green", "Not Significant" = "blue")) +  
+labs(title = "Sample A",       
+x = "Log2 Fold Change",      
+y = "-Log10 Adjusted P-value")
+
+volcanoA
+
+```
+
+
+
+#Activity
+```{r}
+resSampleB <- resSampleB[!is.na(resSampleB$padj), ]
+
+
+resSampleB$Significance <- ifelse(resSampleB$padj < 0.05 & abs(resSampleB$log2FoldChange) > 1, "Significant", "Not Significant")
+
+
+library("ggplot2")
+volcanoB <- ggplot(resSampleB, aes(x = log2FoldChange, y = -log10(padj), color = Significance)) +  
+geom_point(alpha = 0.8, size = 1.5) +  
+scale_color_manual(values = c("Significant" = "yellow", "Not Significant" = "black")) +
+  labs(title = "Sample B",       
+x = "Log2 Fold Change",      
+y = "-Log10 Adjusted P-value") +
+  theme_bw() +
+  theme(
+    legend.position = "top",
+    axis.title = element_text(size = 17),   
+    axis.text = element_text(size = 12),   
+    panel.grid.major = element_blank(),     
+    panel.grid.minor = element_blank()      
+)
+
+
+volcanoB
+
+```
+
+
+#volcano plot sample A
+```{r}
+resSampleA <- resSampleA[!is.na(resSampleA$padj), ]
+
+
+resSampleA$Significance <- ifelse(resSampleA$padj < 0.05 & abs(resSampleA$log2FoldChange) > 1, "Significant", "Not Significant")
+
+
+library(ggplot2)
+volcanoA <- ggplot(resSampleA, aes(x = log2FoldChange, y = -log10(padj), color = Significance)) +  
+geom_point(alpha = 0.8, size = 1.5) +  
+scale_color_manual(values = c("Significant" = "red", "Not Significant" = "yellow")) +
+  labs(title = "Sample A",       
+x = "Log2 Fold Change",      
+y = "-Log10 Adjusted P-value") +
+  theme_bw() +
+  theme(
+    legend.position = "top",
+    axis.title = element_text(size = 17),   
+    axis.text = element_text(size = 12),   
+    panel.grid.major = element_blank(),     
+    panel.grid.minor = element_blank()      
+)
+
+
+volcanoA
+
+```
+
+
+
+
+#Plot specific genes
+#Prepare normalized count data with coldata.
+```{r}
+BiocManager::install("Rmisc")
+library(Rmisc)
+
+NormalizedCount <- read.csv("Normalized_counts.csv", row.names = 1)
+NC_t <- cbind(name = rownames(t(NormalizedCount)), t(NormalizedCount))
+
+
+coldata <- read.csv("coldata.csv", header = TRUE, row.names = 1)
+coldata$name <- rownames(coldata)
+
+
+NC_col <- merge(coldata, NC_t, by = "name")
+
+
+NC_col[, 4:ncol(NC_col)] <- lapply(NC_col[, 4:ncol(NC_col)], function(x) as.numeric(as.character(x)))
+
+```
+
+
+#Summarize data for a gene
+```{r}
+
+Glyma_13G122766.sum <- summarySE(NC_col, measurevar = "Glyma_13G122766", groupvars = c("sample", "condition"))
+
+
+Glyma_13G122766.sum
+
+```
+
+
+#Plotting
+```{r}
+
+Glyma_13G122766 <- ggplot(Glyma_13G122766.sum, aes(x = sample, y = Glyma_13G122766, fill = condition)) +
+geom_bar(position = position_dodge(), stat = "identity", color = "grey20") +
+  labs(y = "Transcript levels\n(normalized counts)", 
+       x = "Sample", 
+       title = "Glyma_13G122766") +
+  geom_errorbar(aes(ymin = Glyma_13G122766, ymax = Glyma_13G122766 + sd),
+ linewidth = 0.2, color = "red", width = 0.1, position = position_dodge(0.5)) +
+  scale_fill_manual(values = c("blue", "black"),
+                    breaks = c("control", "treated"))
+
+Glyma_13G122766  
+
+
+ggsave(filename = "Glyma_13G122766.png",
+       plot = Glyma_13G122766, 
+       width = 2, height = 3, units = "in", dpi = 300)
+
+
+```
+
+
+#Activity
+##Summarize data for a gene
+```{r}
+
+Glyma_01G000359.sum <- summarySE(NC_col, measurevar = "Glyma_01G000359", groupvars = c("sample", "condition"))
+
+
+Glyma_01G000359.sum
+
+```
+
+
+#Plotting
+```{r}
+
+Glyma_01G000359 <- ggplot(Glyma_01G000359.sum, aes(x = sample, y = Glyma_01G000359, fill = condition)) +
+geom_bar(position = position_dodge(), stat = "identity", color = "blue") +
+  labs(y = "Transcript levels\n(normalized counts)", 
+       x = "Sample", 
+       title = "Glyma_01G000359") +
+  geom_errorbar(aes(ymin = Glyma_01G000359, ymax = Glyma_01G000359 + sd),
+ linewidth = 0.3, color = "orange", width = 0.2, position = position_dodge(0.9)) +
+  scale_fill_manual(values = c("red", "black"),
+                    breaks = c("control", "treated"))
+
+Glyma_01G000359
+
+
+ggsave(filename = "Glyma_01G000359.png",
+       plot = Glyma_01G000359, 
+       width = 4, height = 4, units = "in", dpi = 300)
+
+```
+
+
+
+
+
+
